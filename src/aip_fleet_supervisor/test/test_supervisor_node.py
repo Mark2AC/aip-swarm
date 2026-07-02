@@ -41,7 +41,7 @@ def _override(vehicle_id='aip1', command=OverrideCommand.CMD_ESTOP, manual_cmd_v
 
 def _heartbeat(vehicle_id='aip1'):
     hb = FleetHeartbeat()
-    hb.vehicle_id = vehicle_id
+    hb.robot_id = vehicle_id
     return hb
 
 
@@ -216,7 +216,7 @@ class TestPublishStatus:
         node._publish_status()
         status = node._status_pub.publish.call_args[0][0]
         assert status.offline_vehicle_ids == []
-        assert {v.vehicle_id for v in status.vehicles} == set(node.vehicle_ids)
+        assert {v.robot_id for v in status.vehicles} == set(node.vehicle_ids)
 
     def test_stale_heartbeat_is_offline(self, node):
         self._seed_all_fresh(node)
@@ -226,7 +226,7 @@ class TestPublishStatus:
         node._publish_status()
         status = node._status_pub.publish.call_args[0][0]
         assert 'aip2' in status.offline_vehicle_ids
-        assert all(v.vehicle_id != 'aip2' for v in status.vehicles)
+        assert all(v.robot_id != 'aip2' for v in status.vehicles)
 
     def test_never_seen_vehicle_is_offline(self, node):
         node._last_heartbeat.clear()
@@ -252,8 +252,11 @@ class TestPublishStatus:
         node._publish_status()
         node._estop_lock_pubs['aip1'].publish.assert_called_with(Bool(data=True))
 
-    def test_unlocked_vehicle_not_reasserted(self, node):
+    def test_unlocked_vehicle_reasserted_as_false(self, node):
+        # 노드는 매 status 주기마다 estop_lock 상태를 전 차량에 권위적으로 재발행한다
+        # (일회성 VOLATILE 발행이 twist_mux(BEST_EFFORT)에 미도달하던 estop 해제 문제 방지).
+        # 잠금 해제된 차량은 미발행이 아니라 False 로 재발행된다.
         node._estop_locked = set()
         node._estop_lock_pubs['aip1'].publish.reset_mock()
         node._publish_status()
-        node._estop_lock_pubs['aip1'].publish.assert_not_called()
+        node._estop_lock_pubs['aip1'].publish.assert_called_with(Bool(data=False))
